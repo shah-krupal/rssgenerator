@@ -35,15 +35,16 @@ import java.util.Date;
 @Service
 public class RssItemServiceImpl implements RssItemService {
     @Autowired
-    RssItemRepo rssItemRepo ;
+    RssItemRepo rssItemRepo;
     @Autowired
-    RssFeedRepo rssFeedRepo ;
+    RssFeedRepo rssFeedRepo;
     @Autowired
-    MongoOperations mongoOperations ;
+    MongoOperations mongoOperations;
     @Autowired
-    MongoTemplate mongoTemplate ;
+    MongoTemplate mongoTemplate;
     @Value("${spring.data.statName}")
-    String statName ;
+    String statName;
+
     @Override
     @Transactional
     public String createItem(RssItem rssItem) {
@@ -54,28 +55,29 @@ public class RssItemServiceImpl implements RssItemService {
             Update update = new Update();
             update.inc("noOfItems", 1);
 
-            Stats newstats = mongoOperations.findAndModify(query, update, new FindAndModifyOptions().returnNew(true), Stats.class);
+            Stats newstats = mongoOperations.findAndModify(query, update, new FindAndModifyOptions().returnNew(true),
+                    Stats.class);
             assert newstats != null;
 
             rssItem.setItemId(newstats.getNoOfItems());
-            rssItem.setPubDate(new Date());  // today's date
+            rssItem.setPubDate(new Date()); // today's date
             rssItemRepo.save(rssItem);
 
             System.out.println("Rss Item Added Successfully");
-            Item item = convertToItem(rssItem) ;
+            Item item = convertToItem(rssItem);
 
             return "Item Added Successfully";
-        }catch(Exception e){
+        } catch (Exception e) {
             System.out.println("Item Not Added");
             System.out.println(e.getMessage());
             e.printStackTrace();
-            return "Item Not Added" ;
+            return "Item Not Added";
         }
     }
 
     @Override
     public Item convertToItem(RssItem rssItem) {
-        Item item = new Item() ;   // ROME RSS item
+        Item item = new Item(); // ROME RSS item
         item.setAuthor(rssItem.getCreator());
         item.setTitle(rssItem.getTitle());
         Description description = new Description();
@@ -84,26 +86,27 @@ public class RssItemServiceImpl implements RssItemService {
         item.setDescription(description);
         item.setPubDate(rssItem.getPubDate());
         Guid guid = new Guid();
-        guid.setValue("https://permalink.com"+Integer.toString(rssItem.getItemId()));
+        guid.setValue("https://permalink.com" + Integer.toString(rssItem.getItemId()));
         guid.setPermaLink(false); // Set to true if the GUID is a permalink
         item.setGuid(guid);
+        item.setUri(rssItem.getLink());
 
-        Query query = new Query() ;
-        query.addCriteria(Criteria.where("feedId").is(rssItem.getFeedId())) ;
+        Query query = new Query();
+        query.addCriteria(Criteria.where("feedId").is(rssItem.getFeedId()));
 
-        Update update = new Update() ;
-        update.addToSet("itemList").each(item) ;
-        try{
-            mongoTemplate.upsert(query,update, RssFeed.class);    // Saving to corresp. feed
-        }catch (Exception e){
+        Update update = new Update();
+        update.addToSet("itemList").each(item);
+        try {
+            mongoTemplate.upsert(query, update, RssFeed.class); // Saving to corresp. feed
+        } catch (Exception e) {
             e.printStackTrace();
         }
-        return item ;
+        return item;
     }
 
     @Override
     public Channel convertToFeed(Item item, RssItem rssItem) {
-        Channel channel = new Channel() ;
+        Channel channel = new Channel();
         channel.setFeedType("rss_2.0");
         Namespace atomNamespace = Namespace.getNamespace("atom", "http://www.w3.org/2005/Atom");
         Element atomLink = new Element("link", atomNamespace);
@@ -111,17 +114,17 @@ public class RssItemServiceImpl implements RssItemService {
         atomLink.setAttribute("rel", "self");
         atomLink.setAttribute("type", "application/rss+xml");
         channel.getForeignMarkup().add(atomLink);
-        RssFeed rssFeed = rssFeedRepo.findByFeedId(rssItem.getFeedId()) ;
+        RssFeed rssFeed = rssFeedRepo.findByFeedId(rssItem.getFeedId());
         channel.setTitle(rssFeed.getTitle());
         channel.setGenerator(rssFeed.getGenerator());
         channel.setDescription(rssFeed.getDescription());
         channel.setUri(rssFeed.getUrl());
         channel.setItems(Collections.singletonList(item));
         channel.setPubDate(new Date());
-        channel.setLink("http://localhost.com");  // Not sure what should come
-        System.out.println("rssItem "+rssFeed.getTitle());
+        channel.setLink("http://localhost.com"); // Not sure what should come
+        System.out.println("rssItem " + rssFeed.getTitle());
         System.out.println("Channel " + channel.getTitle());
-        return channel ;
+        return channel;
     }
 
     @Override
@@ -139,38 +142,35 @@ public class RssItemServiceImpl implements RssItemService {
         // Build the request entity
         HttpEntity<Channel> requestEntity = new HttpEntity<>(channel, requestHeaders);
 
-        URI url = URI.create("http://localhost:8081/webhook");   // URL of webhook receiver
+        URI url = URI.create("http://localhost:8081/webhook"); // URL of webhook receiver
 
-        try{
-            ResponseEntity<String> responseEntity = restTemplate.exchange(url, HttpMethod.POST, requestEntity, String.class);
+        try {
+            ResponseEntity<String> responseEntity = restTemplate.exchange(url, HttpMethod.POST, requestEntity,
+                    String.class);
             System.out.println("successfully notified");
             return responseEntity.getBody();
-        }catch(Exception e){
+        } catch (Exception e) {
             System.out.println("Not able to notify");
             e.printStackTrace();
-            return e.getMessage() ;
+            return e.getMessage();
         }
-
-
 
     }
 
     @Override
     public String createandnotify(RssItem rssItem) {
-        try{
-            createItem(rssItem) ;
-            Item item = convertToItem(rssItem) ;
-            Channel channel = convertToFeed(item, rssItem) ;
-            String status = notifyHook(channel) ;
-            return status ;
-        }catch (Exception e){
+        try {
+            createItem(rssItem);
+            Item item = convertToItem(rssItem);
+            Channel channel = convertToFeed(item, rssItem);
+            String status = notifyHook(channel);
+            return status;
+        } catch (Exception e) {
             System.out.println("ERR!!");
             e.printStackTrace();
-            return e.getMessage() ;
+            return e.getMessage();
         }
 
-
     }
-
 
 }
